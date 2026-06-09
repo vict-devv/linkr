@@ -1,14 +1,17 @@
 ## Linkr - URL Shortener Platform
 
-Linkr is a self-hosted URL shortening platform built in Go. It consists of two independent services that communicate via RabbitMQ.
+Linkr is a self-hosted URL shortening platform built in Go. It consists of three independent services that communicate via RabbitMQ and a shared MongoDB instance.
 
 ```
-POST /shorten  ─►  shortener-api  ─► Postgres
-GET  /{code}   ─►  shortener-api  ─► Redis (cache) ─► Postgres
-                        │
-                        └── RabbitMQ (redirect.clicked)
-                                │
-                          analytics-worker ─► MongoDB
+POST /shorten        ─►  shortener-api  ─► Postgres
+GET  /{code}         ─►  shortener-api  ─► Redis (cache) ─► Postgres
+                               │
+                               └── RabbitMQ (redirect.clicked)
+                                            │
+                                      analytics-worker ─► MongoDB
+                                                              │
+GET /stats/{code}    ─►       stats-api  ◄─────────────────(read)
+GET /health          ─►       stats-api
 ```
 
 ## Services
@@ -85,6 +88,73 @@ Returns 503 with `"status":"degraded"` if either dependency is down.
 ```sh
 cd analytics-worker
 AMQP_URL=amqp://guest:guest@localhost:5672/ MONGO_URI=mongodb://localhost:27017 go run ./cmd/analytics-worker
+```
+
+---
+
+### stats-api
+
+Read-only HTTP API that exposes aggregated click analytics for short codes, intended for consumption by a dashboard. Reads from the same MongoDB instance written to by `analytics-worker` — performs no writes.
+
+**Endpoints**
+
+| Method | Path             | Description                                  |
+| ------ | ---------------- | -------------------------------------------- |
+| GET    | /stats/{code}    | Aggregated analytics for a short code        |
+| GET    | /health          | Liveness check (MongoDB)                     |
+
+**`GET /stats/{code}` response**
+
+```json
+{
+  "code": "abc123",
+  "total_clicks": 1042,
+  "clicks_over_time": [
+    { "date": "2026-05-11", "count": 0 },
+    { "date": "2026-05-12", "count": 98 }
+  ],
+  "top_referrers": [
+    { "referrer": "https://twitter.com", "count": 310 },
+    { "referrer": "", "count": 205 }
+  ]
+}
+```
+
+- `clicks_over_time`: daily buckets for the last `STATS_WINDOW_DAYS` days, zero-filled for days with no clicks
+- `top_referrers`: up to `TOP_REFERRERS_LIMIT` referrers by count, descending
+- Returns 404 `{"error":"code not found"}` if no click events exist for the code
+
+> **Prerequisite index** — the following compound index must exist on the `click_events` collection before the service handles production traffic:
+> ```
+> db.click_events.createIndex({ code: 1, timestamp: -1 })
+> ```
+
+**Environment variables**
+
+| Variable               | Default                     | Description                                  |
+| ---------------------- | --------------------------- | -------------------------------------------- |
+| `PORT`                 | `8080`                      | Listen port                                  |
+| `MONGO_URI`            | `mongodb://localhost:27017` | MongoDB connection URI                       |
+| `MONGO_DB`             | `analytics`                 | MongoDB database name                        |
+| `MONGO_COLLECTION`     | `click_events`              | MongoDB collection name                      |
+| `STATS_WINDOW_DAYS`    | `30`                        | Lookback window for `clicks_over_time`       |
+| `TOP_REFERRERS_LIMIT`  | `10`                        | Maximum referrers returned                   |
+
+**Health endpoint**
+
+`GET /health` returns 200 when MongoDB is reachable:
+
+```json
+{"status":"ok","mongo":"up"}
+```
+
+Returns 503 with `"status":"degraded"` if MongoDB is unreachable.
+
+**Run**
+
+```sh
+cd stats-api
+MONGO_URI=mongodb://localhost:27017 go run ./cmd/stats-api
 ```
 
 ---
