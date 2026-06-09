@@ -19,21 +19,32 @@ HTTP API for creating and resolving short URLs. Stores mappings in Postgres with
 
 **Endpoints**
 
-| Method | Path     | Description                     |
-| ------ | -------- | ------------------------------- |
-| POST   | /shorten | Create a short URL              |
-| GET    | /{code}  | Redirect to the original URL    |
-| GET    | /health  | Liveness check (Postgres+Redis) |
+| Method | Path     | Description                              |
+| ------ | -------- | ---------------------------------------- |
+| POST   | /shorten | Create a short URL                       |
+| GET    | /{code}  | Redirect to the original URL             |
+| GET    | /health  | Liveness check (Postgres+Redis+RabbitMQ) |
 
 **Environment variables**
 
-| Variable       | Required | Default   | Description                 |
-| -------------- | -------- | --------- | --------------------------- |
-| `DATABASE_URL` | yes      | —         | Postgres connection string  |
-| `REDIS_URL`    | yes      | —         | Redis address (`host:port`) |
-| `HOST`         | no       | `0.0.0.0` | Listen host                 |
-| `PORT`         | no       | `8080`    | Listen port                 |
-| `CACHE_TTL`    | no       | `24h`     | Redis cache TTL             |
+| Variable       | Required | Default                              | Description                      |
+| -------------- | -------- | ------------------------------------ | -------------------------------- |
+| `DATABASE_URL` | yes      | —                                    | Postgres connection string       |
+| `REDIS_URL`    | yes      | —                                    | Redis address (`host:port`)      |
+| `AMQP_URL`     | no       | `amqp://guest:guest@localhost:5672/` | RabbitMQ connection URL          |
+| `HOST`         | no       | `0.0.0.0`                            | Listen host                      |
+| `PORT`         | no       | `8080`                               | Listen port                      |
+| `CACHE_TTL`    | no       | `24h`                                | Redis cache TTL                  |
+
+**Health endpoint**
+
+`GET /health` returns 200 when Postgres, Redis, and RabbitMQ are all reachable:
+
+```json
+{"status":"ok","postgres":"up","redis":"up","amqp":"up"}
+```
+
+Returns 503 with `"status":"degraded"` if any dependency is down.
 
 **Run**
 

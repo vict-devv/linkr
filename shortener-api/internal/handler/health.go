@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func healthHandler(dbPing func(context.Context) error, cachePing func(context.Context) error, log *slog.Logger) http.HandlerFunc {
+func healthHandler(dbPing func(context.Context) error, cachePing func(context.Context) error, amqpAlive func() bool, log *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
 		defer cancel()
@@ -35,9 +35,14 @@ func healthHandler(dbPing func(context.Context) error, cachePing func(context.Co
 		go probe(cachePing, &rdisStatus)
 		wg.Wait()
 
+		amqpStatus := "up"
+		if !amqpAlive() {
+			amqpStatus = "down"
+		}
+
 		status := "ok"
 		httpStatus := http.StatusOK
-		if pgStatus == "down" || rdisStatus == "down" {
+		if pgStatus == "down" || rdisStatus == "down" || amqpStatus == "down" {
 			status = "degraded"
 			httpStatus = http.StatusServiceUnavailable
 		}
@@ -46,6 +51,7 @@ func healthHandler(dbPing func(context.Context) error, cachePing func(context.Co
 			"status":   status,
 			"postgres": pgStatus,
 			"redis":    rdisStatus,
+			"amqp":     amqpStatus,
 		})
 	}
 }
