@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**linkr** is a self-hosted URL shortening platform written in Go. It consists of two independent services, each with its own `go.mod`, that communicate via RabbitMQ:
+**linkr** is a self-hosted URL shortening platform written in Go. It consists of three independent services, each with its own `go.mod`, that communicate via RabbitMQ and a shared MongoDB instance:
 
 - **shortener-api** — HTTP API for creating and resolving short URLs (Postgres + Redis)
 - **analytics-worker** — AMQP consumer that records click events to MongoDB
+- **stats-api** — read-only HTTP API that exposes aggregated click analytics from MongoDB
+- **shared/** — shared Go module (`github.com/linkr/shared`) containing the dotenv config loader
 
 ## Common Commands
 
-All commands must be run from within the respective service directory (`shortener-api/` or `analytics-worker/`), since each is an independent Go module.
+All commands must be run from within the respective service directory (`shortener-api/`, `analytics-worker/`, or `stats-api/`), since each is an independent Go module.
 
 ```sh
 # Build
@@ -32,7 +34,10 @@ go vet ./...
 # Run a service (example env vars — see README for full list)
 DATABASE_URL=postgres://... REDIS_URL=localhost:6379 go run ./cmd/shortener-api
 AMQP_URL=amqp://guest:guest@localhost:5672/ MONGO_URI=mongodb://localhost:27017 go run ./cmd/analytics-worker
+go run ./cmd/stats-api   # defaults work for local Docker deps
 ```
+
+Each service loads a `.env` file on startup (selected by `ENV`/`ENVIRONMENT`: `local`→`.env`, `dev`→`.env.dev`, `prod`→`.env.prod`; defaults to `local`). Copy `.env.example` to `.env` in each service directory to get started. An unrecognised `ENV` value exits the process immediately.
 
 Local dependencies via Docker (Postgres, Redis, RabbitMQ, MongoDB) are documented in the README.
 
@@ -40,19 +45,21 @@ Local dependencies via Docker (Postgres, Redis, RabbitMQ, MongoDB) are documente
 
 ### Service structure
 
-Both services follow the same internal layout:
+All three services follow the same internal layout:
 
 ```
 cmd/<service>/main.go      — wires dependencies and starts the process
-internal/handler/          — HTTP handlers + router (shortener-api)
-internal/consumer/         — AMQP consumer loop (analytics-worker)
+internal/handler/          — HTTP handlers + router
+internal/consumer/         — AMQP consumer loop (analytics-worker only)
 internal/repo/             — storage interface + implementation
-internal/cache/            — cache interface + Redis impl (shortener-api)
-internal/publisher/        — AMQP publisher (shortener-api)
+internal/cache/            — cache interface + Redis impl (shortener-api only)
+internal/publisher/        — AMQP publisher (shortener-api only)
 internal/middleware/       — HTTP middleware (logging)
-internal/model/            — shared event types
+internal/model/            — shared event types (shortener-api only)
 tests/                     — black-box tests against the assembled router/consumer
 ```
+
+The `shared/` directory is a separate Go module (`github.com/linkr/shared`) containing `shared/config/loader.go` — the dotenv loader used by all three services. Each service references it via a `replace` directive in its `go.mod`.
 
 ### shortener-api
 
@@ -68,6 +75,14 @@ tests/                     — black-box tests against the assembled router/cons
 - `ProcessMessage` is exported to allow unit testing without a live broker.
 - Consumes from exchange `redirects` (topic), routing key `redirect.clicked`, queue `analytics.clicks`.
 - Invalid messages (bad JSON, missing `code`, bad timestamp) are nacked without requeue.
+
+### stats-api
+
+- Read-only service; performs no writes to MongoDB.
+- `NewRouter` in [stats-api/internal/handler/routes.go](stats-api/internal/handler/routes.go) wires `GET /stats/{code}` and `GET /health`.
+- `MongoStatsRepo` in [stats-api/internal/repo/mongo.go](stats-api/internal/repo/mongo.go) runs three aggregation pipelines (`TotalClicks`, `ClicksOverTime`, `TopReferrers`). Queries slower than 200 ms are logged as warnings.
+- **Required index** (must exist before production traffic): `db.click_events.createIndex({ code: 1, timestamp: -1 })`
+- Returns 404 `{"error":"code not found"}` when no click events exist for a code.
 
 ### Testing approach
 
