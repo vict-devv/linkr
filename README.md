@@ -30,21 +30,21 @@ HTTP API for creating and resolving short URLs. Stores mappings in Postgres with
 
 **Environment variables**
 
-| Variable       | Required | Default                              | Description                      |
-| -------------- | -------- | ------------------------------------ | -------------------------------- |
-| `DATABASE_URL` | yes      | —                                    | Postgres connection string       |
-| `REDIS_URL`    | yes      | —                                    | Redis address (`host:port`)      |
-| `AMQP_URL`     | no       | `amqp://guest:guest@localhost:5672/` | RabbitMQ connection URL          |
-| `HOST`         | no       | `0.0.0.0`                            | Listen host                      |
-| `PORT`         | no       | `8080`                               | Listen port                      |
-| `CACHE_TTL`    | no       | `24h`                                | Redis cache TTL                  |
+| Variable       | Required | Default                              | Description                 |
+| -------------- | -------- | ------------------------------------ | --------------------------- |
+| `DATABASE_URL` | yes      | —                                    | Postgres connection string  |
+| `REDIS_URL`    | yes      | —                                    | Redis address (`host:port`) |
+| `AMQP_URL`     | no       | `amqp://guest:guest@localhost:5672/` | RabbitMQ connection URL     |
+| `HOST`         | no       | `0.0.0.0`                            | Listen host                 |
+| `PORT`         | no       | `8080`                               | Listen port                 |
+| `CACHE_TTL`    | no       | `24h`                                | Redis cache TTL             |
 
 **Health endpoint**
 
 `GET /health` returns 200 when Postgres, Redis, and RabbitMQ are all reachable:
 
 ```json
-{"status":"ok","postgres":"up","redis":"up","amqp":"up"}
+{ "status": "ok", "postgres": "up", "redis": "up", "amqp": "up" }
 ```
 
 Returns 503 with `"status":"degraded"` if any dependency is down.
@@ -79,7 +79,7 @@ AMQP consumer that records click-through events emitted by `shortener-api`. Cons
 `GET /health` returns 200 when both RabbitMQ and MongoDB are reachable:
 
 ```json
-{"status":"ok","amqp":"up","mongo":"up"}
+{ "status": "ok", "amqp": "up", "mongo": "up" }
 ```
 
 Returns 503 with `"status":"degraded"` if either dependency is down.
@@ -100,10 +100,10 @@ Read-only HTTP API that exposes aggregated click analytics for short codes, inte
 
 **Endpoints**
 
-| Method | Path             | Description                                  |
-| ------ | ---------------- | -------------------------------------------- |
-| GET    | /stats/{code}    | Aggregated analytics for a short code        |
-| GET    | /health          | Liveness check (MongoDB)                     |
+| Method | Path          | Description                           |
+| ------ | ------------- | ------------------------------------- |
+| GET    | /stats/{code} | Aggregated analytics for a short code |
+| GET    | /health       | Liveness check (MongoDB)              |
 
 **`GET /stats/{code}` response**
 
@@ -127,27 +127,28 @@ Read-only HTTP API that exposes aggregated click analytics for short codes, inte
 - Returns 404 `{"error":"code not found"}` if no click events exist for the code
 
 > **Prerequisite index** — the following compound index must exist on the `click_events` collection before the service handles production traffic:
+>
 > ```
 > db.click_events.createIndex({ code: 1, timestamp: -1 })
 > ```
 
 **Environment variables**
 
-| Variable               | Default                     | Description                                  |
-| ---------------------- | --------------------------- | -------------------------------------------- |
-| `PORT`                 | `8080`                      | Listen port                                  |
-| `MONGO_URI`            | `mongodb://localhost:27017` | MongoDB connection URI                       |
-| `MONGO_DB`             | `analytics`                 | MongoDB database name                        |
-| `MONGO_COLLECTION`     | `click_events`              | MongoDB collection name                      |
-| `STATS_WINDOW_DAYS`    | `30`                        | Lookback window for `clicks_over_time`       |
-| `TOP_REFERRERS_LIMIT`  | `10`                        | Maximum referrers returned                   |
+| Variable              | Default                     | Description                            |
+| --------------------- | --------------------------- | -------------------------------------- |
+| `PORT`                | `8083`                      | Listen port                            |
+| `MONGO_URI`           | `mongodb://localhost:27017` | MongoDB connection URI                 |
+| `MONGO_DB`            | `analytics`                 | MongoDB database name                  |
+| `MONGO_COLLECTION`    | `click_events`              | MongoDB collection name                |
+| `STATS_WINDOW_DAYS`   | `30`                        | Lookback window for `clicks_over_time` |
+| `TOP_REFERRERS_LIMIT` | `10`                        | Maximum referrers returned             |
 
 **Health endpoint**
 
 `GET /health` returns 200 when MongoDB is reachable:
 
 ```json
-{"status":"ok","mongo":"up"}
+{ "status": "ok", "mongo": "up" }
 ```
 
 Returns 503 with `"status":"degraded"` if MongoDB is unreachable.
@@ -168,12 +169,12 @@ go run ./cmd/stats-api
 
 All three services use a shared dotenv loader. On startup each service looks for a `.env` file in its own root directory, selected by the `ENV` (or `ENVIRONMENT`) variable:
 
-| `ENV` value | File loaded  |
-| ----------- | ------------ |
-| `local`     | `.env`       |
-| `dev`       | `.env.dev`   |
-| `prod`      | `.env.prod`  |
-| *(unset)*   | `.env`       |
+| `ENV` value | File loaded |
+| ----------- | ----------- |
+| `local`     | `.env`      |
+| `dev`       | `.env.dev`  |
+| `prod`      | `.env.prod` |
+| _(unset)_   | `.env`      |
 
 If the selected file does not exist the service starts normally, relying on environment variables injected by the runtime (e.g. Docker, Kubernetes). An unrecognised `ENV` value causes the process to exit immediately with a descriptive error.
 
