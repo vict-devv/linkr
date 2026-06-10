@@ -10,7 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	sharedconfig "github.com/linkr/shared/config"
 	"github.com/linkr/shortener-api/internal/cache"
+	"github.com/linkr/shortener-api/internal/config"
 	"github.com/linkr/shortener-api/internal/handler"
 	"github.com/linkr/shortener-api/internal/publisher"
 	"github.com/linkr/shortener-api/internal/repo"
@@ -19,16 +21,16 @@ import (
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	dbURL := mustEnv("DATABASE_URL", log)
-	redisAddr := mustEnv("REDIS_URL", log)
-	amqpURL := envOr("AMQP_URL", "amqp://guest:guest@localhost:5672/")
-	host := envOr("HOST", "0.0.0.0")
-	port := envOr("PORT", "8080")
-	cacheTTL := parseDuration(envOr("CACHE_TTL", "24h"), log)
+	if err := sharedconfig.Load(".", log); err != nil {
+		log.Error("failed to load env file", "error", err)
+		os.Exit(1)
+	}
+
+	cfg := config.Load(log)
 
 	ctx := context.Background()
 
-	pgRepo, err := repo.NewPostgresRepo(ctx, dbURL)
+	pgRepo, err := repo.NewPostgresRepo(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Error("failed to connect to postgres", "error", err)
 		os.Exit(1)
@@ -38,20 +40,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	redisCache := cache.NewRedisCache(redisAddr)
+	redisCache := cache.NewRedisCache(cfg.RedisURL)
 
-	pub := publisher.NewAMQPPublisher(amqpURL, log)
+	pub := publisher.NewAMQPPublisher(cfg.AMQPURL, log)
 	pub.Connect()
 
-	cfg := handler.Config{
-		Host:     host,
-		Port:     port,
-		CacheTTL: cacheTTL,
+	routerCfg := handler.Config{
+		Host:     cfg.Host,
+		Port:     cfg.Port,
+		CacheTTL: cfg.CacheTTL,
 	}
 
-	router := handler.NewRouter(cfg, pgRepo, redisCache, pgRepo.Ping, redisCache.Ping, pub, pub.IsAlive, log)
+	router := handler.NewRouter(routerCfg, pgRepo, redisCache, pgRepo.Ping, redisCache.Ping, pub, pub.IsAlive, log)
 
-	addr := host + ":" + port
+	addr := cfg.Host + ":" + cfg.Port
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: router,
@@ -81,29 +83,4 @@ func main() {
 		log.Warn("publisher close error", "error", err)
 	}
 	log.Info("shutdown complete")
-}
-
-func mustEnv(key string, log *slog.Logger) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Error("required environment variable not set", "key", key)
-		os.Exit(1)
-	}
-	return v
-}
-
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func parseDuration(s string, log *slog.Logger) time.Duration {
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		log.Error("invalid CACHE_TTL, using default 24h", "value", s, "error", err)
-		return 24 * time.Hour
-	}
-	return d
 }

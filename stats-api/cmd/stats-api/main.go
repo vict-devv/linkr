@@ -7,10 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
+	sharedconfig "github.com/linkr/shared/config"
+	"github.com/linkr/stats-api/internal/config"
 	"github.com/linkr/stats-api/internal/handler"
 	"github.com/linkr/stats-api/internal/repo"
 )
@@ -18,31 +19,31 @@ import (
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	mongoURI := envOr("MONGO_URI", "mongodb://localhost:27017")
-	mongoDB := envOr("MONGO_DB", "analytics")
-	mongoColl := envOr("MONGO_COLLECTION", "click_events")
-	port := envOr("PORT", "8080")
-	windowDays := parseInt(envOr("STATS_WINDOW_DAYS", "30"), "STATS_WINDOW_DAYS", log)
-	topLimit := parseInt(envOr("TOP_REFERRERS_LIMIT", "10"), "TOP_REFERRERS_LIMIT", log)
+	if err := sharedconfig.Load(".", log); err != nil {
+		log.Error("failed to load env file", "error", err)
+		os.Exit(1)
+	}
+
+	cfg := config.Load(log)
 
 	ctx := context.Background()
 
-	mongoRepo, err := repo.NewMongoStatsRepo(ctx, mongoURI, mongoDB, mongoColl, log)
+	mongoRepo, err := repo.NewMongoStatsRepo(ctx, cfg.MongoURI, cfg.MongoDB, cfg.MongoCollection, log)
 	if err != nil {
 		log.Error("failed to connect to mongodb", "error", err)
 		os.Exit(1)
 	}
 
-	cfg := handler.Config{
-		Port:              port,
-		StatsWindowDays:   windowDays,
-		TopReferrersLimit: topLimit,
+	routerCfg := handler.Config{
+		Port:              cfg.Port,
+		StatsWindowDays:   cfg.StatsWindowDays,
+		TopReferrersLimit: cfg.TopReferrersLimit,
 	}
 
-	router := handler.NewRouter(cfg, mongoRepo, mongoRepo.Ping, log)
+	router := handler.NewRouter(routerCfg, mongoRepo, mongoRepo.Ping, log)
 
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    ":" + cfg.Port,
 		Handler: router,
 	}
 
@@ -70,20 +71,4 @@ func main() {
 		log.Warn("mongo close error", "error", err)
 	}
 	log.Info("shutdown complete")
-}
-
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
-
-func parseInt(s, name string, log *slog.Logger) int {
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		log.Error("invalid environment variable", "key", name, "value", s)
-		os.Exit(1)
-	}
-	return n
 }

@@ -53,7 +53,8 @@ Returns 503 with `"status":"degraded"` if any dependency is down.
 
 ```sh
 cd shortener-api
-DATABASE_URL=postgres://... REDIS_URL=localhost:6379 go run ./cmd/shortener-api
+cp .env.example .env          # fill in DATABASE_URL and REDIS_URL
+go run ./cmd/shortener-api
 ```
 
 ---
@@ -87,7 +88,8 @@ Returns 503 with `"status":"degraded"` if either dependency is down.
 
 ```sh
 cd analytics-worker
-AMQP_URL=amqp://guest:guest@localhost:5672/ MONGO_URI=mongodb://localhost:27017 go run ./cmd/analytics-worker
+cp .env.example .env          # defaults work for local Docker deps
+go run ./cmd/analytics-worker
 ```
 
 ---
@@ -154,8 +156,36 @@ Returns 503 with `"status":"degraded"` if MongoDB is unreachable.
 
 ```sh
 cd stats-api
-MONGO_URI=mongodb://localhost:27017 go run ./cmd/stats-api
+cp .env.example .env          # defaults work for local Docker deps
+go run ./cmd/stats-api
 ```
+
+---
+
+## Configuration
+
+### Environment selection
+
+All three services use a shared dotenv loader. On startup each service looks for a `.env` file in its own root directory, selected by the `ENV` (or `ENVIRONMENT`) variable:
+
+| `ENV` value | File loaded  |
+| ----------- | ------------ |
+| `local`     | `.env`       |
+| `dev`       | `.env.dev`   |
+| `prod`      | `.env.prod`  |
+| *(unset)*   | `.env`       |
+
+If the selected file does not exist the service starts normally, relying on environment variables injected by the runtime (e.g. Docker, Kubernetes). An unrecognised `ENV` value causes the process to exit immediately with a descriptive error.
+
+Each service ships a `.env.example` file that lists every supported variable with safe placeholder values. Copy it to `.env` to get started locally:
+
+```sh
+cp shortener-api/.env.example shortener-api/.env
+cp analytics-worker/.env.example analytics-worker/.env
+cp stats-api/.env.example stats-api/.env
+```
+
+> `.env`, `.env.dev`, and `.env.prod` are gitignored. Only `.env.example` is committed.
 
 ---
 

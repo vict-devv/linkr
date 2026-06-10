@@ -3,12 +3,16 @@ module github.com/linkr/analytics-worker
 go 1.22.0
 
 require (
+	github.com/linkr/shared v0.0.0-00010101000000-000000000000
 	github.com/rabbitmq/amqp091-go v1.10.0
 	go.mongodb.org/mongo-driver/v2 v2.0.0
 )
 
+replace github.com/linkr/shared => ../shared
+
 require (
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/scram v1.1.2 // indirect
