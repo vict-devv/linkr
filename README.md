@@ -203,11 +203,23 @@ go test ./...
 go vet ./...
 ```
 
-**Local dependencies (Docker)**
+**Docker**
+
+A `docker-compose.yaml` at the repo root builds and starts all services. Copy the
+env files first (see [Configuration](#configuration)), then:
 
 ```sh
-docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16
-docker run -d -p 6379:6379 redis:7
-docker run -d -p 5672:5672 -p 15672:15672 rabbitmq:3-management
-docker run -d -p 27017:27017 mongo:7
+# Start everything (infra + all three application services)
+docker compose up --build
+
+# Infra only — use this when running services locally with `go run`
+docker compose up postgres redis rabbitmq mongo
 ```
+
+Exposed ports when using Compose:
+
+| Service       | Port  | Notes             |
+| ------------- | ----- | ----------------- |
+| shortener-api | 8080  |                   |
+| stats-api     | 8083  |                   |
+| RabbitMQ UI   | 15672 | management plugin |
