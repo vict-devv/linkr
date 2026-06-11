@@ -30,16 +30,26 @@ go test ./tests/ -run TestShorten_ValidURL
 
 # Static analysis
 go vet ./...
+```
 
-# Run a service (example env vars — see README for full list)
+### Local development
+
+Copy `.env.example` to `.env` in each service directory before running locally.
+
+```sh
+# Start infrastructure only (use when running services with `go run`)
+docker compose up postgres redis rabbitmq mongo
+
+# Start everything including application services
+docker compose up --build
+
+# Run individual services (example env vars — see README for full list)
 DATABASE_URL=postgres://... REDIS_URL=localhost:6379 go run ./cmd/shortener-api
 AMQP_URL=amqp://guest:guest@localhost:5672/ MONGO_URI=mongodb://localhost:27017 go run ./cmd/analytics-worker
 go run ./cmd/stats-api   # defaults work for local Docker deps
 ```
 
-Each service loads a `.env` file on startup (selected by `ENV`/`ENVIRONMENT`: `local`→`.env`, `dev`→`.env.dev`, `prod`→`.env.prod`; defaults to `local`). Copy `.env.example` to `.env` in each service directory to get started. An unrecognised `ENV` value exits the process immediately.
-
-Local dependencies via Docker (Postgres, Redis, RabbitMQ, MongoDB) are documented in the README.
+Each service loads a `.env` file on startup (selected by `ENV`/`ENVIRONMENT`: `local`→`.env`, `dev`→`.env.dev`, `prod`→`.env.prod`; defaults to `local`). An unrecognised `ENV` value exits the process immediately.
 
 ## Architecture
 
@@ -49,6 +59,7 @@ All three services follow the same internal layout:
 
 ```
 cmd/<service>/main.go      — wires dependencies and starts the process
+internal/config/           — typed Config struct with Load() that reads env vars
 internal/handler/          — HTTP handlers + router
 internal/consumer/         — AMQP consumer loop (analytics-worker only)
 internal/repo/             — storage interface + implementation
@@ -63,6 +74,8 @@ The `shared/` directory is a separate Go module (`github.com/linkr/shared`) cont
 
 ### shortener-api
 
+**Endpoints:** `POST /shorten`, `GET /{code}`, `GET /health`
+
 - Uses the Go 1.22 stdlib `net/http` mux with method+path patterns (`"GET /{code}"`).
 - `NewRouter` in [shortener-api/internal/handler/routes.go](shortener-api/internal/handler/routes.go) assembles the mux and wires all dependencies through interfaces (`URLRepository`, `URLCache`, `EventPublisher`).
 - On startup, `pgRepo.Migrate` applies the schema automatically — no migration tool needed.
@@ -75,12 +88,17 @@ The `shared/` directory is a separate Go module (`github.com/linkr/shared`) cont
 - `ProcessMessage` is exported to allow unit testing without a live broker.
 - Consumes from exchange `redirects` (topic), routing key `redirect.clicked`, queue `analytics.clicks`.
 - Invalid messages (bad JSON, missing `code`, bad timestamp) are nacked without requeue.
+- Runs a separate HTTP health server on `HEALTH_PORT` (default 8081) with `GET /health` — independent of the AMQP consumer loop.
+- `AMQP_PREFETCH` (default `10`) controls consumer prefetch count.
 
 ### stats-api
+
+**Endpoints:** `GET /stats/{code}`, `GET /health`
 
 - Read-only service; performs no writes to MongoDB.
 - `NewRouter` in [stats-api/internal/handler/routes.go](stats-api/internal/handler/routes.go) wires `GET /stats/{code}` and `GET /health`.
 - `MongoStatsRepo` in [stats-api/internal/repo/mongo.go](stats-api/internal/repo/mongo.go) runs three aggregation pipelines (`TotalClicks`, `ClicksOverTime`, `TopReferrers`). Queries slower than 200 ms are logged as warnings.
+- `STATS_WINDOW_DAYS` (default `30`) controls the lookback window for `clicks_over_time`; `TOP_REFERRERS_LIMIT` (default `10`) caps the referrers returned.
 - **Required index** (must exist before production traffic): `db.click_events.createIndex({ code: 1, timestamp: -1 })`
 - Returns 404 `{"error":"code not found"}` when no click events exist for a code.
 
