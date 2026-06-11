@@ -1,0 +1,132 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: linkr
+      POSTGRES_USER: local
+      POSTGRES_PASSWORD: local
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U local -d linkr"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - linkr
+
+  redis:
+    image: redis:8-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - linkr
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    ports:
+      - 15672:15672 # for rabbitmq UI
+    environment:
+      RABBITMQ_DEFAULT_USER: local
+      RABBITMQ_DEFAULT_PASS: local
+      RABBITMQ_DEFAULT_VHOST: linkr
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s # slow-starting service
+    networks:
+      - linkr
+
+  mongo:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: local
+      MONGO_INITDB_ROOT_PASSWORD: local
+      MONGO_INITDB_DATABASE: analytics
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'mongosh --quiet --eval "db.adminCommand(''ping'').ok" | grep -q 1',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s # slow-starting service
+    networks:
+      - linkr
+
+  shortener-api:
+    build:
+      context: .
+      dockerfile: shortener-api/Dockerfile
+    ports:
+      - 8080:8080
+    environment:
+      ENV: local
+    env_file:
+      - shortener-api/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - linkr
+    restart: unless-stopped
+
+  analytics-worker:
+    build:
+      context: .
+      dockerfile: analytics-worker/Dockerfile
+    environment:
+      ENV: local
+    env_file:
+      - analytics-worker/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    networks:
+      - linkr
+    restart: unless-stopped
+
+  stats-api:
+    build:
+      context: .
+      dockerfile: stats-api/Dockerfile
+    environment:
+      ENV: local
+    env_file:
+      - stats-api/.env
+    ports:
+      - 8083:8083
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - linkr
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  mongo_data:
+
+networks:
+  linkr:
