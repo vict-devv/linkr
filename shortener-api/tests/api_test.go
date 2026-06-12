@@ -368,6 +368,21 @@ func TestRedirect_ReferrerEmpty(t *testing.T) {
 	}
 }
 
+func TestRedirect_SeededCode(t *testing.T) {
+	r, c := newFakeRepo(), newFakeCache()
+	r.urls["google"] = "https://www.google.com"
+	router := newRouter(r, c)
+
+	w := get(router, "/google")
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("expected 302, got %d", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "https://www.google.com" {
+		t.Fatalf("expected Location https://www.google.com, got %q", loc)
+	}
+}
+
 func TestHealth_AllUp(t *testing.T) {
 	r, c := newFakeRepo(), newFakeCache()
 	router := newRouter(r, c)

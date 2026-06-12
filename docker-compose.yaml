@@ -67,6 +67,18 @@ services:
     networks:
       - linkr
 
+  shortener-api-migrate:
+    image: migrate/migrate
+    volumes:
+      - ./shortener-api/migrations:/migrations
+    command: ["-path", "/migrations", "-database", "postgres://local:local@postgres:5432/linkr?sslmode=disable", "up"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - linkr
+    restart: no
+
   shortener-api:
     build:
       context: .
@@ -84,6 +96,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      shortener-api-migrate:
+        condition: service_completed_successfully
     networks:
       - linkr
     restart: unless-stopped

@@ -35,11 +35,6 @@ func main() {
 		log.Error("failed to connect to postgres", "error", err)
 		os.Exit(1)
 	}
-	if err := pgRepo.Migrate(ctx); err != nil {
-		log.Error("migration failed", "error", err)
-		os.Exit(1)
-	}
-
 	redisCache := cache.NewRedisCache(cfg.RedisURL)
 
 	pub := publisher.NewAMQPPublisher(cfg.AMQPURL, log)

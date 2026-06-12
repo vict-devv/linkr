@@ -25,17 +25,6 @@ func NewPostgresRepo(ctx context.Context, dsn string) (*PostgresRepo, error) {
 	return &PostgresRepo{pool: pool}, nil
 }
 
-func (r *PostgresRepo) Migrate(ctx context.Context) error {
-	_, err := r.pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS urls (
-			code       TEXT PRIMARY KEY,
-			long_url   TEXT NOT NULL,
-			created_at TIMESTAMPTZ DEFAULT now()
-		)
-	`)
-	return err
-}
-
 func (r *PostgresRepo) Save(ctx context.Context, longURL, code string) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO urls (code, long_url) VALUES ($1, $2)`,

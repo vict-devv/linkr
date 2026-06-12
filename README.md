@@ -49,11 +49,28 @@ HTTP API for creating and resolving short URLs. Stores mappings in Postgres with
 
 Returns 503 with `"status":"degraded"` if any dependency is down.
 
+**Running migrations**
+
+Schema migrations are managed by the [`golang-migrate`](https://github.com/golang-migrate/migrate) CLI and must be applied before the service handles any traffic. Install the CLI from the [releases page](https://github.com/golang-migrate/migrate/releases), then:
+
+```sh
+migrate -path shortener-api/migrations -database "$DATABASE_URL" up
+```
+
+To roll back one version at a time:
+
+```sh
+migrate -path shortener-api/migrations -database "$DATABASE_URL" down 1
+```
+
+When using `docker compose up`, the `shortener-api-migrate` service runs the migrations automatically before `shortener-api` starts — no manual step is needed in that workflow.
+
 **Run**
 
 ```sh
 cd shortener-api
 cp .env.example .env          # fill in DATABASE_URL and REDIS_URL
+migrate -path migrations -database "$DATABASE_URL" up
 go run ./cmd/shortener-api
 ```
 
