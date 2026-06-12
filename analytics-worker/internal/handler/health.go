@@ -6,14 +6,16 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 func NewHealthServer(port string, amqpAlive func() bool, mongoPing func(context.Context) error, log *slog.Logger) *http.Server {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler(amqpAlive, mongoPing, log))
+	r := chi.NewRouter()
+	r.Get("/health", healthHandler(amqpAlive, mongoPing, log))
 	return &http.Server{
 		Addr:    ":" + port,
-		Handler: mux,
+		Handler: r,
 	}
 }
 
