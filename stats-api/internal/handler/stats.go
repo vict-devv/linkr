@@ -6,20 +6,21 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/linkr/stats-api/internal/repo"
 	"golang.org/x/sync/errgroup"
 )
 
 type statsResponse struct {
-	Code           string               `json:"code"`
-	TotalClicks    int64                `json:"total_clicks"`
+	Code           string                `json:"code"`
+	TotalClicks    int64                 `json:"total_clicks"`
 	ClicksOverTime []repo.ClicksOverTime `json:"clicks_over_time"`
-	TopReferrers   []repo.TopReferrer   `json:"top_referrers"`
+	TopReferrers   []repo.TopReferrer    `json:"top_referrers"`
 }
 
 func statsHandler(cfg Config, r repo.StatsRepository, log *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		code := req.PathValue("code")
+		code := chi.URLParam(req, "code")
 
 		var (
 			totalClicks int64

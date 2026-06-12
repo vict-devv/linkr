@@ -1,6 +1,6 @@
 module github.com/linkr/analytics-worker
 
-go 1.22.0
+go 1.23
 
 require (
 	github.com/linkr/shared v0.0.0-00010101000000-000000000000
@@ -11,6 +11,7 @@ require (
 replace github.com/linkr/shared => ../shared
 
 require (
+	github.com/go-chi/chi/v5 v5.3.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect

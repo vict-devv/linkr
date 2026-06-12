@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/linkr/stats-api/internal/middleware"
 	"github.com/linkr/stats-api/internal/repo"
 )
@@ -16,8 +17,9 @@ type Config struct {
 }
 
 func NewRouter(cfg Config, r repo.StatsRepository, mongoPing func(context.Context) error, log *slog.Logger) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /stats/{code}", statsHandler(cfg, r, log))
-	mux.HandleFunc("GET /health", healthHandler(mongoPing, log))
-	return middleware.Logging(log)(mux)
+	router := chi.NewRouter()
+	router.Use(middleware.Logging(log))
+	router.Get("/stats/{code}", statsHandler(cfg, r, log))
+	router.Get("/health", healthHandler(mongoPing, log))
+	return router
 }

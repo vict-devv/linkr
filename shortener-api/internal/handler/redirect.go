@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/linkr/shortener-api/internal/cache"
 	"github.com/linkr/shortener-api/internal/model"
 	"github.com/linkr/shortener-api/internal/publisher"
@@ -18,7 +19,7 @@ import (
 
 func redirectHandler(r repo.URLRepository, c cache.URLCache, ttl time.Duration, pub publisher.EventPublisher, log *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		code := req.PathValue("code")
+		code := chi.URLParam(req, "code")
 		ctx := req.Context()
 
 		longURL, err := c.Get(ctx, code)
