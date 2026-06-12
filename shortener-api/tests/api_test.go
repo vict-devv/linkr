@@ -163,13 +163,20 @@ func newRouterWithAMQPAlive(r *fakeRepo, c *fakeCache, amqpAlive func() bool) ht
 }
 
 func newRouterFull(r *fakeRepo, c *fakeCache, dbPing func(context.Context) error, pub *fakePublisher, amqpAlive func() bool) http.Handler {
-	cfg := handler.Config{Host: "localhost", Port: "8080", CacheTTL: time.Hour}
+	cfg := handler.Config{Host: "localhost", Port: "8080", CacheTTL: time.Hour, APIKey: "testkey"}
 	return handler.NewRouter(cfg, r, c, dbPing, c.Ping, pub, amqpAlive, newNopLogger())
 }
 
 func post(router http.Handler, body string) *httptest.ResponseRecorder {
+	return postWith(router, body, "Bearer testkey")
+}
+
+func postWith(router http.Handler, body, auth string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/shorten", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	return w
@@ -438,5 +445,53 @@ func TestHealth_AMQPDown(t *testing.T) {
 	}
 	if resp["amqp"] != "down" {
 		t.Fatalf("expected amqp down, got %q", resp["amqp"])
+	}
+}
+
+func TestAuth_Shorten(t *testing.T) {
+	body := `{"url":"https://example.com"}`
+	router := newRouter(newFakeRepo(), newFakeCache())
+
+	w := post(router, body)
+	if w.Code != http.StatusOK {
+		t.Errorf("valid key: expected 200, got %d", w.Code)
+	}
+
+	w = postWith(router, body, "")
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("no auth header: expected 401, got %d", w.Code)
+	}
+	var resp map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["error"] != "unauthorized" {
+		t.Errorf("no auth header: expected error=unauthorized, got %q", resp["error"])
+	}
+
+	w = postWith(router, body, "Token testkey")
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("wrong scheme: expected 401, got %d", w.Code)
+	}
+
+	w = postWith(router, body, "Bearer wrongkey")
+	if w.Code != http.StatusForbidden {
+		t.Errorf("wrong key: expected 403, got %d", w.Code)
+	}
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["error"] != "forbidden" {
+		t.Errorf("wrong key: expected error=forbidden, got %q", resp["error"])
+	}
+}
+
+func TestAuth_PublicRoutes(t *testing.T) {
+	router := newRouter(newFakeRepo(), newFakeCache())
+
+	w := get(router, "/health")
+	if w.Code != http.StatusOK {
+		t.Errorf("/health: expected 200 without auth, got %d", w.Code)
+	}
+
+	w = get(router, "/nosuchcode")
+	if w.Code != http.StatusNotFound {
+		t.Errorf("GET /{code}: expected 404 without auth, got %d", w.Code)
 	}
 }

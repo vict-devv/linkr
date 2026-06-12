@@ -13,6 +13,7 @@ var nopLog = slog.New(slog.NewTextHandler(os.Stderr, nil))
 func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test")
 	t.Setenv("REDIS_URL", "localhost:6379")
+	t.Setenv("API_KEY", "testkey")
 	os.Unsetenv("AMQP_URL")
 	os.Unsetenv("HOST")
 	os.Unsetenv("PORT")
@@ -37,6 +38,7 @@ func TestLoad_Defaults(t *testing.T) {
 func TestLoad_BadCacheTTL_UsesDefault(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://test")
 	t.Setenv("REDIS_URL", "localhost:6379")
+	t.Setenv("API_KEY", "testkey")
 	t.Setenv("CACHE_TTL", "not-a-duration")
 
 	cfg := Load(nopLog)

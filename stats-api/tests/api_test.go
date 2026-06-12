@@ -60,12 +60,23 @@ func newRouterWithPing(r *fakeRepo, ping func(context.Context) error) http.Handl
 		Port:              "8080",
 		StatsWindowDays:   windowDays,
 		TopReferrersLimit: 10,
+		APIKey:            "testkey",
 	}
 	return handler.NewRouter(cfg, r, ping, newNopLogger())
 }
 
 func get(router http.Handler, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, path, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	return w
+}
+
+func getWith(router http.Handler, path, auth string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	return w
@@ -87,17 +98,17 @@ func TestStats_HappyPath(t *testing.T) {
 	}
 	router := newRouter(r)
 
-	w := get(router, "/stats/abc123")
+	w := getWith(router, "/stats/abc123", "Bearer testkey")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body)
 	}
 
 	var resp struct {
-		Code           string               `json:"code"`
-		TotalClicks    int64                `json:"total_clicks"`
+		Code           string                `json:"code"`
+		TotalClicks    int64                 `json:"total_clicks"`
 		ClicksOverTime []repo.ClicksOverTime `json:"clicks_over_time"`
-		TopReferrers   []repo.TopReferrer   `json:"top_referrers"`
+		TopReferrers   []repo.TopReferrer    `json:"top_referrers"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal("invalid JSON:", err)
@@ -124,7 +135,7 @@ func TestStats_ZeroFillContinuous(t *testing.T) {
 	}
 	router := newRouter(r)
 
-	w := get(router, "/stats/abc123")
+	w := getWith(router, "/stats/abc123", "Bearer testkey")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -149,7 +160,7 @@ func TestStats_CodeNotFound(t *testing.T) {
 	r := &fakeRepo{totalClicks: 0}
 	router := newRouter(r)
 
-	w := get(router, "/stats/nosuchcode")
+	w := getWith(router, "/stats/nosuchcode", "Bearer testkey")
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
@@ -166,7 +177,7 @@ func TestStats_RepoError(t *testing.T) {
 	r := &fakeRepo{err: sentinel}
 	router := newRouter(r)
 
-	w := get(router, "/stats/abc123")
+	w := getWith(router, "/stats/abc123", "Bearer testkey")
 
 	if w.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", w.Code)
@@ -220,15 +231,60 @@ func TestHealth_MongoDown(t *testing.T) {
 	}
 }
 
+func TestAuth_Stats(t *testing.T) {
+	r := &fakeRepo{totalClicks: 1}
+	router := newRouter(r)
+
+	w := getWith(router, "/stats/abc123", "Bearer testkey")
+	if w.Code != http.StatusOK {
+		t.Errorf("valid key: expected 200, got %d", w.Code)
+	}
+
+	w = get(router, "/stats/abc123")
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("no auth header: expected 401, got %d", w.Code)
+	}
+	var resp map[string]string
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["error"] != "unauthorized" {
+		t.Errorf("no auth header: expected error=unauthorized, got %q", resp["error"])
+	}
+
+	w = getWith(router, "/stats/abc123", "Token testkey")
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("wrong scheme: expected 401, got %d", w.Code)
+	}
+
+	w = getWith(router, "/stats/abc123", "Bearer wrongkey")
+	if w.Code != http.StatusForbidden {
+		t.Errorf("wrong key: expected 403, got %d", w.Code)
+	}
+	_ = json.NewDecoder(w.Body).Decode(&resp)
+	if resp["error"] != "forbidden" {
+		t.Errorf("wrong key: expected error=forbidden, got %q", resp["error"])
+	}
+}
+
+func TestAuth_PublicRoutes(t *testing.T) {
+	r := &fakeRepo{}
+	router := newRouter(r)
+
+	w := get(router, "/health")
+	if w.Code != http.StatusOK {
+		t.Errorf("/health: expected 200 without auth, got %d", w.Code)
+	}
+}
+
 func TestLogging_FieldsPresent(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewJSONHandler(&buf, nil))
 
 	r := &fakeRepo{totalClicks: 1}
-	cfg := handler.Config{Port: "8080", StatsWindowDays: windowDays, TopReferrersLimit: 10}
+	cfg := handler.Config{Port: "8080", StatsWindowDays: windowDays, TopReferrersLimit: 10, APIKey: "testkey"}
 	router := handler.NewRouter(cfg, r, func(_ context.Context) error { return nil }, log)
 
 	req := httptest.NewRequest(http.MethodGet, "/stats/abc123", nil)
+	req.Header.Set("Authorization", "Bearer testkey")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

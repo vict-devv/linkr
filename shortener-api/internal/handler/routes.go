@@ -17,6 +17,7 @@ type Config struct {
 	Host     string
 	Port     string
 	CacheTTL time.Duration
+	APIKey   string
 }
 
 func NewRouter(cfg Config, r repo.URLRepository, c cache.URLCache, dbPing func(context.Context) error, cachePing func(context.Context) error, pub publisher.EventPublisher, amqpAlive func() bool, log *slog.Logger) http.Handler {
@@ -24,7 +25,7 @@ func NewRouter(cfg Config, r repo.URLRepository, c cache.URLCache, dbPing func(c
 	router.Use(middleware.Logging(log))
 
 	router.Get("/health", healthHandler(dbPing, cachePing, amqpAlive, log))
-	router.Post("/shorten", shortenHandler(cfg, r, c, log))
+	router.With(middleware.APIKeyAuth(cfg.APIKey)).Post("/shorten", shortenHandler(cfg, r, c, log))
 	router.Get("/{code}", redirectHandler(r, c, cfg.CacheTTL, pub, log))
 
 	return router

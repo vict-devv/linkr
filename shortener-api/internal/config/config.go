@@ -13,6 +13,7 @@ type Config struct {
 	Host        string
 	Port        string
 	CacheTTL    time.Duration
+	APIKey      string
 }
 
 func Load(log *slog.Logger) Config {
@@ -23,6 +24,7 @@ func Load(log *slog.Logger) Config {
 		Host:        envOr("HOST", "0.0.0.0"),
 		Port:        envOr("PORT", "8080"),
 		CacheTTL:    parseDuration("CACHE_TTL", "24h", log),
+		APIKey:      mustEnv("API_KEY", log),
 	}
 }
 

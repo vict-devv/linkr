@@ -13,6 +13,7 @@ type Config struct {
 	Port              string
 	StatsWindowDays   int
 	TopReferrersLimit int
+	APIKey            string
 }
 
 func Load(log *slog.Logger) Config {
@@ -23,7 +24,17 @@ func Load(log *slog.Logger) Config {
 		Port:              envOr("PORT", "8080"),
 		StatsWindowDays:   parsePositiveInt("STATS_WINDOW_DAYS", 30, log),
 		TopReferrersLimit: parsePositiveInt("TOP_REFERRERS_LIMIT", 10, log),
+		APIKey:            mustEnv("API_KEY", log),
 	}
+}
+
+func mustEnv(key string, log *slog.Logger) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Error("required environment variable not set", "key", key)
+		os.Exit(1)
+	}
+	return v
 }
 
 func envOr(key, def string) string {
