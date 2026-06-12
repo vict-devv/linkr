@@ -10,6 +10,7 @@ import (
 var nopLog = slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 func TestLoad_Defaults(t *testing.T) {
+	t.Setenv("API_KEY", "testkey")
 	os.Unsetenv("MONGO_URI")
 	os.Unsetenv("MONGO_DB")
 	os.Unsetenv("MONGO_COLLECTION")
@@ -58,7 +59,7 @@ func TestLoad_InvalidPositiveInt_Exits(t *testing.T) {
 				return
 			}
 			cmd := exec.Command(os.Args[0], "-test.run=TestLoad_InvalidPositiveInt_Exits/"+tc.name)
-			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=1", tc.env+"="+tc.val)
+			cmd.Env = append(os.Environ(), "TEST_SUBPROCESS=1", "API_KEY=testkey", tc.env+"="+tc.val)
 			err := cmd.Run()
 			if err == nil {
 				t.Fatalf("expected non-zero exit for %s=%s", tc.env, tc.val)

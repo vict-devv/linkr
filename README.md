@@ -22,22 +22,23 @@ HTTP API for creating and resolving short URLs. Stores mappings in Postgres with
 
 **Endpoints**
 
-| Method | Path     | Description                              |
-| ------ | -------- | ---------------------------------------- |
-| POST   | /shorten | Create a short URL                       |
-| GET    | /{code}  | Redirect to the original URL             |
-| GET    | /health  | Liveness check (Postgres+Redis+RabbitMQ) |
+| Method | Path     | Auth     | Description                              |
+| ------ | -------- | -------- | ---------------------------------------- |
+| POST   | /shorten | required | Create a short URL                       |
+| GET    | /{code}  | —        | Redirect to the original URL             |
+| GET    | /health  | —        | Liveness check (Postgres+Redis+RabbitMQ) |
 
 **Environment variables**
 
-| Variable       | Required | Default                              | Description                 |
-| -------------- | -------- | ------------------------------------ | --------------------------- |
-| `DATABASE_URL` | yes      | —                                    | Postgres connection string  |
-| `REDIS_URL`    | yes      | —                                    | Redis address (`host:port`) |
-| `AMQP_URL`     | no       | `amqp://guest:guest@localhost:5672/` | RabbitMQ connection URL     |
-| `HOST`         | no       | `0.0.0.0`                            | Listen host                 |
-| `PORT`         | no       | `8080`                               | Listen port                 |
-| `CACHE_TTL`    | no       | `24h`                                | Redis cache TTL             |
+| Variable       | Required | Default                              | Description                          |
+| -------------- | -------- | ------------------------------------ | ------------------------------------ |
+| `DATABASE_URL` | yes      | —                                    | Postgres connection string           |
+| `REDIS_URL`    | yes      | —                                    | Redis address (`host:port`)          |
+| `API_KEY`      | yes      | —                                    | Bearer token for `POST /shorten`     |
+| `AMQP_URL`     | no       | `amqp://guest:guest@localhost:5672/` | RabbitMQ connection URL              |
+| `HOST`         | no       | `0.0.0.0`                            | Listen host                          |
+| `PORT`         | no       | `8080`                               | Listen port                          |
+| `CACHE_TTL`    | no       | `24h`                                | Redis cache TTL                      |
 
 **Health endpoint**
 
@@ -69,7 +70,7 @@ When using `docker compose up`, the `shortener-api-migrate` service runs the mig
 
 ```sh
 cd shortener-api
-cp .env.example .env          # fill in DATABASE_URL and REDIS_URL
+cp .env.example .env          # fill in DATABASE_URL, REDIS_URL, and API_KEY
 migrate -path migrations -database "$DATABASE_URL" up
 go run ./cmd/shortener-api
 ```
@@ -117,10 +118,10 @@ Read-only HTTP API that exposes aggregated click analytics for short codes, inte
 
 **Endpoints**
 
-| Method | Path          | Description                           |
-| ------ | ------------- | ------------------------------------- |
-| GET    | /stats/{code} | Aggregated analytics for a short code |
-| GET    | /health       | Liveness check (MongoDB)              |
+| Method | Path          | Auth     | Description                           |
+| ------ | ------------- | -------- | ------------------------------------- |
+| GET    | /stats/{code} | required | Aggregated analytics for a short code |
+| GET    | /health       | —        | Liveness check (MongoDB)              |
 
 **`GET /stats/{code}` response**
 
@@ -151,14 +152,15 @@ Read-only HTTP API that exposes aggregated click analytics for short codes, inte
 
 **Environment variables**
 
-| Variable              | Default                     | Description                            |
-| --------------------- | --------------------------- | -------------------------------------- |
-| `PORT`                | `8083`                      | Listen port                            |
-| `MONGO_URI`           | `mongodb://localhost:27017` | MongoDB connection URI                 |
-| `MONGO_DB`            | `analytics`                 | MongoDB database name                  |
-| `MONGO_COLLECTION`    | `click_events`              | MongoDB collection name                |
-| `STATS_WINDOW_DAYS`   | `30`                        | Lookback window for `clicks_over_time` |
-| `TOP_REFERRERS_LIMIT` | `10`                        | Maximum referrers returned             |
+| Variable              | Required | Default                     | Description                            |
+| --------------------- | -------- | --------------------------- | -------------------------------------- |
+| `API_KEY`             | yes      | —                           | Bearer token for `GET /stats/{code}`   |
+| `PORT`                | no       | `8083`                      | Listen port                            |
+| `MONGO_URI`           | no       | `mongodb://localhost:27017` | MongoDB connection URI                 |
+| `MONGO_DB`            | no       | `analytics`                 | MongoDB database name                  |
+| `MONGO_COLLECTION`    | no       | `click_events`              | MongoDB collection name                |
+| `STATS_WINDOW_DAYS`   | no       | `30`                        | Lookback window for `clicks_over_time` |
+| `TOP_REFERRERS_LIMIT` | no       | `10`                        | Maximum referrers returned             |
 
 **Health endpoint**
 
